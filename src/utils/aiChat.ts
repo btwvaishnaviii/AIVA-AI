@@ -1,6 +1,7 @@
 type Message = { role: "user" | "assistant"; content: string };
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-chat`;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const CHAT_URL = SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/ai-chat` : null;
 
 export async function streamChat({
   messages,
@@ -14,6 +15,13 @@ export async function streamChat({
   onError: (error: string) => void;
 }) {
   try {
+    if (!CHAT_URL) {
+      throw new Error(
+        "Supabase URL is not configured. Please set up environment variables properly. " +
+          "Check the deployment documentation for instructions on setting up VITE_SUPABASE_URL."
+      );
+    }
+
     const resp = await fetch(CHAT_URL, {
       method: "POST",
       headers: {
@@ -39,7 +47,7 @@ export async function streamChat({
     while (!streamDone) {
       const { done, value } = await reader.read();
       if (done) break;
-      
+
       textBuffer += decoder.decode(value, { stream: true });
 
       let newlineIndex: number;
@@ -59,7 +67,9 @@ export async function streamChat({
 
         try {
           const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          const content = parsed.choices?.[0]?.delta?.content as
+            | string
+            | undefined;
           if (content) onDelta(content);
         } catch {
           textBuffer = line + "\n" + textBuffer;
@@ -78,9 +88,13 @@ export async function streamChat({
         if (jsonStr === "[DONE]") continue;
         try {
           const parsed = JSON.parse(jsonStr);
-          const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+          const content = parsed.choices?.[0]?.delta?.content as
+            | string
+            | undefined;
           if (content) onDelta(content);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
     }
 
